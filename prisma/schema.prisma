@@ -1,58 +1,117 @@
-// This is your Prisma schema file for Xolva
-// Connects to your Supabase PostgreSQL database
-
+// === KONFIGURASI GENERATOR & DATABASE ===
 datasource db {
-  provider = "sqlite"
-  // KOSONGIN AJA, JANGAN ADA BARIS URL
+  provider = "postgresql"  // <--- UBAH INI
+  url      = env("DATABASE_URL") // <--- DAN INI
 }
 
 generator client {
   provider = "prisma-client-js"
 }
 
+// === MODEL USER (BOSS XOLVA) ===
 model User {
-  id               String    @id @default(cuid())
-  email            String    @unique
-  name             String?
-  level            Int       @default(1)
-  totalExp         Int       @default(0)
-  tier             String    @default("FREE") // FREE, 5K, 10K, 20K, 30K
-  weeklyPhotoCount Int       @default(0)      // Untuk limitasi upload foto mingguan
-  habits           Habit[]
-  posts            Post[]
-  challenges       UserChallenge[]
-  createdAt        DateTime  @default(now())
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  tier      String   @default("FREE")
+  avatar    String   @default("😎")
+  xp        Int      @default(0)
+  level     Int      @default(1)
+  
+  password  String   @default("123456") // <--- TAMBAHKAN INI (Default biar user lama gak error)
+
+  currentStreak Int      @default(0) 
+  lastActive    DateTime?            
+
+  createdAt DateTime @default(now())
+
+  // Relasi ke tabel lain
+  habits         Habit[]
+  history        HabitHistory[]
+  userChallenges UserChallenge[] 
+  posts          Post[]          
+  
+  // 👇 TAMBAHKAN BARIS INI (PENYEBAB ERRORNYA)
+  rewards        Reward[]  
 }
 
+// === MODEL HABIT (Misi Harian yang Aktif) ===
 model Habit {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  name        String
-  category    String   // DAILY, WEEKLY, MONTHLY, PROJECT
-  expReward   Int      // Disimpan sesuai range (3-6, 15-25, etc.)
-  isCompleted Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  posts       Post[]
+  id           String   @id @default(cuid())
+  name         String
+  category     String
+  expReward    Int      
+  userId       String
+  
+  targetValue  Int      @default(1)
+  currentValue Int      @default(0)
+  
+  // === TAMBAHAN BARU ===
+  lastCompleted DateTime?  // <--- Tambahin ini (Boleh kosong/Null)
+  // =====================
+
+  logs         HabitLog[]
+  createdAt    DateTime @default(now())
+  
+  user         User     @relation(fields: [userId], references: [id])
+  posts        Post[]   
 }
 
+// === MODEL BARU: BUKU CATATAN BUKTI ===
+model HabitLog {
+  id        String   @id @default(cuid())
+  habitId   String
+  habit     Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  
+  note      String   // "Bukti" (Contoh: "Udah baca Bab 1")
+  createdAt DateTime @default(now())
+}
+
+// === MODEL HISTORY (Buku Sejarah Misi Selesai) ===
+// Ini dipakai buat bikin Grafik Mingguan biar datanya gak hilang
+model HabitHistory {
+  id          String   @id @default(cuid())
+  habitName   String
+  category    String
+  xpEarned    Int
+  completedAt DateTime @default(now()) // Kapan diselesaikannya
+  
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+// === MODEL CHALLENGE (Tantangan Khusus - Future Feature) ===
 model UserChallenge {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  type        String   // EASY, MEDIUM, HARD
-  status      String   @default("PENDING") // COMPLETED, FAILED
-  expiresAt   DateTime // Muncul random 4 hari sekali
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  type      String 
+  status    String   @default("PENDING") 
+  expiresAt DateTime 
+  createdAt DateTime @default(now())
 }
 
+// === MODEL POST (Global Feed - Future Feature) ===
 model Post {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   habitId   String?
   habit     Habit?   @relation(fields: [habitId], references: [id])
-  imageUrl  String   // Foto masuk ke Global Explore
+  imageUrl  String 
   caption   String?
+  createdAt DateTime @default(now())
+}
+
+// === TOKO HADIAH (SELF REWARD) ===
+model Reward {
+  id        String   @id @default(cuid())
+  name      String   // Contoh: "Nonton Netflix 1 Jam"
+  cost      Int      // Harga: 500 XP
+  emoji     String   // Ikon: 🍿
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  
   createdAt DateTime @default(now())
 }
