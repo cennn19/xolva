@@ -42,6 +42,7 @@ model Habit {
   category     String
   expReward    Int      
   userId       String
+  deadline     DateTime?
   
   targetValue  Int      @default(1)
   currentValue Int      @default(0)

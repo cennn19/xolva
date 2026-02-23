@@ -2,66 +2,47 @@
 
 import React from 'react';
 import Navbar from '@/components/layout/Navbar';
-import { Heart, MessageCircle, Share2, Award } from 'lucide-react';
+import { Users, Hammer, Sparkles } from 'lucide-react';
 
 export default function SocialPage() {
-  // Data dummy untuk simulasi Global Explore
-  const posts = [
-    { id: 1, user: "Alif_Gamer", level: 5, action: "Lari Pagi 5km", image: "https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?q=80&w=500", likes: 12, time: "2m ago" },
-    { id: 2, user: "Sasa_Study", level: 3, action: "Belajar Coding 2 Jam", image: "https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=500", likes: 8, time: "15m ago" },
-  ];
-
   return (
-    <main className="min-h-screen bg-slate-50 pb-24 lg:pb-0 lg:pl-64 font-sans text-slate-900">
-      <header className="bg-white p-6 sticky top-0 z-10 border-b border-slate-100">
-        <h1 className="text-2xl font-black text-blue-600 tracking-tight">Global Explore</h1>
-        <p className="text-slate-400 text-xs font-medium">Lihat apa yang dunia capai hari ini</p>
-      </header>
-
-      <div className="p-4 max-w-2xl mx-auto space-y-6">
-        {posts.map((post) => (
-          <div key={post.id} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100">
-            {/* User Info Header */}
-            <div className="p-4 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center font-bold text-blue-600">
-                  {post.user[0]}
-                </div>
-                <div>
-                  <p className="font-bold text-sm">{post.user}</p>
-                  <span className="bg-blue-50 text-blue-600 text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">LVL {post.level}</span>
-                </div>
-              </div>
-              <span className="text-slate-400 text-[10px] font-medium">{post.time}</span>
-            </div>
-
-            {/* Achievement Content */}
-            <div className="px-4 pb-3">
-              <p className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                <Award size={16} className="text-yellow-500" /> Baru saja menyelesaikan: <span className="font-bold text-blue-600">{post.action}</span>
-              </p>
-            </div>
-
-            {/* Image Placeholder */}
-            <div className="aspect-square bg-slate-200 relative">
-              <img src={post.image} alt="Achievement" className="w-full h-full object-cover" />
-            </div>
-
-            {/* Interaction Bar (Emoji Style) */}
-            <div className="p-4 flex items-center gap-6">
-              <button className="flex items-center gap-2 text-slate-400 hover:text-red-500 transition-colors">
-                <Heart size={22} />
-                <span className="text-xs font-bold">{post.likes}</span>
-              </button>
-              <button className="text-slate-400 hover:text-blue-500 transition-colors">
-                <MessageCircle size={22} />
-              </button>
-              <button className="text-slate-400 ml-auto hover:text-slate-900 transition-colors">
-                <Share2 size={20} />
-              </button>
-            </div>
+    <main className="min-h-screen bg-[#F8FAFC] pb-24 lg:pb-0 lg:pl-64 font-sans text-slate-900 flex flex-col">
+      
+      {/* HEADER KHUSUS SOCIAL */}
+      <section className="bg-white p-6 lg:p-10 border-b border-slate-100 sticky top-0 z-10">
+        <div className="max-w-5xl mx-auto flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center shadow-sm">
+            <Users size={24} />
           </div>
-        ))}
+          <div>
+            <h1 className="font-black text-2xl tracking-tight uppercase">COMMUNITY</h1>
+            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">
+              XOLVA GUILD HALL
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* KONTEN COMING SOON */}
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
+        
+        {/* Ikon Konstruksi */}
+        <div className="relative mb-8">
+          <div className="absolute inset-0 bg-blue-400 blur-3xl opacity-20 rounded-full"></div>
+          <div className="w-32 h-32 bg-white rounded-[2rem] shadow-xl border border-slate-100 flex items-center justify-center relative z-10 rotate-3">
+            <Hammer size={56} className="text-blue-600" />
+          </div>
+          <div className="absolute -top-4 -right-4 bg-yellow-400 text-yellow-900 px-3 py-1 rounded-lg text-xs font-black rotate-12 shadow-md flex items-center gap-1 z-20">
+            <Sparkles size={12} /> WIP
+          </div>
+        </div>
+
+        {/* Teks Pesan */}
+        <h2 className="text-3xl font-black text-slate-800 tracking-tight mb-4 uppercase">
+          COMING SOON <br /> <span className="text-blue-600">Lagi Dibangun!</span>
+        </h2>
+            <span>TUNGUUIN YAAAA</span>
+          
       </div>
 
       <Navbar />

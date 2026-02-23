@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect } from 'react';
-import confetti from 'canvas-confetti';
-import { X, Trophy, Star } from 'lucide-react';
+import React from 'react';
+import { Star } from 'lucide-react';
 
 interface LevelUpModalProps {
   newLevel: number;
@@ -10,73 +9,31 @@ interface LevelUpModalProps {
 }
 
 export default function LevelUpModal({ newLevel, onClose }: LevelUpModalProps) {
-  
-  // Efek Confetti Pas Modal Muncul
-  useEffect(() => {
-    const duration = 3000;
-    const end = Date.now() + duration;
-
-    const frame = () => {
-      confetti({
-        particleCount: 5,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0 },
-        colors: ['#2563eb', '#9333ea', '#fbbf24'] // Warna Xolva (Biru, Ungu, Emas)
-      });
-      confetti({
-        particleCount: 5,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1 },
-        colors: ['#2563eb', '#9333ea', '#fbbf24']
-      });
-
-      if (Date.now() < end) {
-        requestAnimationFrame(frame);
-      }
-    };
-
-    frame();
-  }, []);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-      <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full text-center shadow-2xl border-4 border-blue-100 relative transform animate-in zoom-in-95 duration-300 scale-100">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in zoom-in duration-300">
+      <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl text-center relative overflow-hidden border border-slate-100">
         
-        {/* Tombol Close */}
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2 bg-slate-100 rounded-full transition-colors"
-        >
-          <X size={20} />
-        </button>
+        {/* Efek Cahaya Halus (Pengganti Confetti) */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        {/* Icon Trophy */}
-        <div className="mx-auto w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-inner ring-8 ring-yellow-50 animate-bounce">
-          <Trophy size={48} className="text-yellow-500 fill-yellow-500" />
+        {/* Ikon Level Up */}
+        <div className="relative w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-blue-200 mb-6 transform -rotate-3 hover:rotate-0 transition-all duration-300">
+          <div className="absolute inset-0 bg-white/20 rounded-3xl animate-pulse"></div>
+          <Star className="text-white w-12 h-12 fill-current relative z-10" />
         </div>
 
-        <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter mb-2">
-          Level Up!
-        </h2>
-        
-        <p className="text-slate-500 font-medium mb-8">
-          Selamat Bos! Kamu sekarang naik ke <br/>
-          <span className="text-blue-600 font-black text-2xl">LEVEL {newLevel}</span>
+        {/* Teks Konten */}
+        <h2 className="text-3xl font-black text-slate-800 tracking-tight mb-2">Level Up!</h2>
+        <p className="text-slate-500 font-medium mb-8 leading-relaxed">
+          Pencapaian luar biasa! Perjuangan lu membuahkan hasil, sekarang naik ke <strong className="text-blue-600 font-black">Level {newLevel}</strong>.
         </p>
 
-        <div className="flex justify-center gap-2 mb-8">
-          {[1, 2, 3].map((s) => (
-             <Star key={s} size={24} className="text-yellow-400 fill-yellow-400 animate-pulse" />
-          ))}
-        </div>
-
-        <button 
+        {/* Tombol Lanjut */}
+        <button
           onClick={onClose}
-          className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-lg shadow-blue-200 transition-all active:scale-95"
+          className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-blue-600 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2"
         >
-          CLAIM REWARD
+          Lanjut Gas! 🚀
         </button>
       </div>
     </div>

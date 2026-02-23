@@ -3,22 +3,56 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Link from 'next/link';
-import { Plus, RotateCcw, Zap, CheckCircle2, Award, Trash2, AlertTriangle, Flame, BarChart3, Target, BookOpen } from 'lucide-react';
+import { Plus, Zap, CheckCircle2, Award, Trash2, Flame, Target, BookOpen, Star, LayoutDashboard, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
-// Pastikan path import ini benar. Kalau error, cek folder actions.
 import { createHabit, deleteHabit, getHabits, completeHabit, resetAccount, addProgress } from './actions/habitActions';
 import LevelUpModal from '@/components/LevelUpModal'; 
+
+// === HELPER: LOGIKA LEVELING RPG EKSPONENSIAL ===
+const calculateLevelInfo = (totalXp: number) => {
+  let level = 1;
+  let xpForNextLevel = 100; // Base XP awal
+  let xpAccumulated = 0; 
+
+  while (totalXp >= xpAccumulated + xpForNextLevel) {
+    xpAccumulated += xpForNextLevel;
+    level++;
+    xpForNextLevel = Math.floor(xpForNextLevel * 1.5);
+  }
+
+  const currentLevelProgress = totalXp - xpAccumulated;
+  const progressPercent = (currentLevelProgress / xpForNextLevel) * 100;
+
+  return { level, currentLevelProgress, xpForNextLevel, progressPercent };
+};
+
+// === HELPER: STYLING BADGE DINAMIS ===
+const getBadgeStyles = (category: string) => {
+  switch (category.toUpperCase()) {
+    case 'HARIAN':
+      return 'bg-blue-50 text-blue-600 border-blue-200';
+    case 'MINGGUAN':
+      return 'bg-indigo-50 text-indigo-600 border-indigo-200';
+    case 'BULANAN':
+      return 'bg-purple-50 text-purple-600 border-purple-200';
+    case 'PROJECT':
+      return 'bg-slate-900 text-white border-slate-900';
+    default:
+      return 'bg-slate-50 text-slate-600 border-slate-200';
+  }
+};
 
 export default function HomePage() {
   // === STATE DATA ===
   const [habits, setHabits] = useState<any[]>([]);
-  const [userStats, setUserStats] = useState({ xp: 0, level: 1, streak: 0, avatar: "😎", name: "Boss Xolva" });
+  const [userStats, setUserStats] = useState({ xp: 0, level: 1, streak: 0, avatar: "😎", name: "Cen" });
   
   // === STATE FORM INPUT ===
   const [activeTab, setActiveTab] = useState('Harian');
   const [habitName, setHabitName] = useState('');
   const [selectedExp, setSelectedExp] = useState(3);
   const [targetValue, setTargetValue] = useState(1); 
+  const [deadline, setDeadline] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // === STATE PROGRESS MODAL ===
@@ -32,14 +66,13 @@ export default function HomePage() {
 
   // --- CONFIG ---
   const habitConfigs: Record<string, { min: number, max: number, slots: number, color: string }> = {
-    'Harian': { min: 3, max: 6, slots: 10, color: 'text-blue-600' },
-    'Mingguan': { min: 15, max: 25, slots: 8, color: 'text-purple-600' },
-    'Bulanan': { min: 40, max: 60, slots: 6, color: 'text-orange-600' },
-    'Project': { min: 300, max: 600, slots: 1, color: 'text-red-600' },
+    'Harian': { min: 3, max: 6, slots: 10, color: 'text-blue-500' },
+    'Mingguan': { min: 15, max: 25, slots: 8, color: 'text-blue-600' },
+    'Bulanan': { min: 40, max: 60, slots: 6, color: 'text-blue-700' },
+    'Project': { min: 300, max: 600, slots: 1, color: 'text-slate-800' },
   };
 
   const currentConfig = habitConfigs[activeTab];
-  const xpPerLevel = 100;
 
   // --- LOAD DATA ---
   const refreshData = async () => {
@@ -52,7 +85,7 @@ export default function HomePage() {
           level: result.user.level || 1,
           streak: result.user.currentStreak || 0,
           avatar: result.user.avatar || "😎",
-          name: result.user.name || "Boss Xolva"
+          name: result.user.name || "Cen"
         });
       }
     }
@@ -60,14 +93,21 @@ export default function HomePage() {
 
   useEffect(() => { refreshData(); }, []);
 
-  // --- LOGIKA COMPLETE MISI ---
+  // --- LOGIKA COMPLETE MISI (OPTIMISTIC) ---
   const handleComplete = async (id: string, exp: number) => {
-    const currentLevel = Math.floor(userStats.xp / xpPerLevel) + 1;
-    const newTotalXp = userStats.xp + exp;
-    const nextLevel = Math.floor(newTotalXp / xpPerLevel) + 1;
+    const currentLevel = calculateLevelInfo(userStats.xp).level;
 
+    // OPTIMISTIC UPDATE: Langsung hapus dari layar
     setHabits((prev) => prev.filter((h) => h.id !== id));
-    setUserStats((prev) => ({ ...prev, xp: newTotalXp, streak: prev.streak + 1 }));
+    
+    const newTotalXp = userStats.xp + exp;
+    const nextLevel = calculateLevelInfo(newTotalXp).level;
+
+    setUserStats((prev) => ({ 
+      ...prev, 
+      xp: newTotalXp, 
+      streak: prev.streak + 1 
+    }));
 
     if (nextLevel > currentLevel) {
       setNewLevelReached(nextLevel);
@@ -75,11 +115,14 @@ export default function HomePage() {
     }
 
     const result = await completeHabit(id);
-    if (result?.success) await refreshData(); 
-    else refreshData(); 
+    
+    if (!result?.success) {
+      console.error("Gagal sinkron ke server");
+      await refreshData();
+    }
   };
 
-  // --- LOGIKA PROGRESS PROJECT ---
+  // --- LOGIKA PROGRESS (SETOR) ---
   const openProgressModal = (id: string) => {
     setSelectedHabitId(id);
     setProgressNote("");
@@ -89,22 +132,19 @@ export default function HomePage() {
   const submitProgress = async () => {
     if (!selectedHabitId || !progressNote) return;
     setIsLoading(true);
-
     const result = await addProgress(selectedHabitId, progressNote) as any;
     
     if (result?.success) {
       if (result.status === 'completed' && result.earnedXp) {
-         const currentLevel = Math.floor(userStats.xp / xpPerLevel) + 1;
-         const newTotalXp = userStats.xp + result.earnedXp;
-         const nextLevel = Math.floor(newTotalXp / xpPerLevel) + 1;
-         
-         if (nextLevel > currentLevel) {
-            setNewLevelReached(nextLevel);
-            setShowLevelUp(true);
-         }
-         alert(`PROJECT SELESAI! +${result.earnedXp} XP 🎉`);
-      } else {
-         alert("Progress tercatat! Lanjutkan perjuangan Bos! 🔥");
+        const currentLevel = calculateLevelInfo(userStats.xp).level;
+        const newTotalXp = userStats.xp + result.earnedXp;
+        const nextLevel = calculateLevelInfo(newTotalXp).level;
+
+        if (nextLevel > currentLevel) { 
+          setNewLevelReached(nextLevel); 
+          setShowLevelUp(true); 
+        }
+        alert(`MISI SELESAI! +${result.earnedXp} XP 🎉`);
       }
       await refreshData();
       setShowProgressModal(false);
@@ -117,24 +157,27 @@ export default function HomePage() {
     if (!habitName || isLoading) return;
     setIsLoading(true);
     const finalExp = Math.min(Math.max(selectedExp, currentConfig.min), currentConfig.max);
-    const finalTarget = activeTab === 'Project' ? targetValue : 1;
+    const finalTarget = activeTab === 'Harian' ? 1 : targetValue;
+    
+    const finalDeadline = activeTab === 'Project' && deadline ? new Date(deadline) : null;
 
-    const result = await createHabit({
-      name: habitName,
-      category: activeTab.toUpperCase(),
-      expReward: finalExp,
-      targetValue: finalTarget
+    const result = await createHabit({ 
+      name: habitName, 
+      category: activeTab.toUpperCase(), 
+      expReward: finalExp, 
+      targetValue: finalTarget,
+      deadline: finalDeadline
     });
 
-    if (result.success) {
-      await refreshData();
-      setHabitName('');
-      setTargetValue(1); 
+    if (result.success) { 
+      await refreshData(); 
+      setHabitName(''); 
+      setTargetValue(activeTab === 'Project' ? 10 : (activeTab === 'Mingguan' ? 3 : (activeTab === 'Bulanan' ? 10 : 1))); 
+      setDeadline('');
     }
     setIsLoading(false);
   };
 
-  // --- LOGIKA HAPUS & RESET ---
   const handleDelete = async (id: string) => {
     if (!confirm("Hapus misi ini?")) return;
     setHabits((prev) => prev.filter((h) => h.id !== id));
@@ -150,182 +193,300 @@ export default function HomePage() {
     }
   };
 
-  // --- UI HELPERS ---
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setSelectedExp(habitConfigs[tab].min);
+    
     if (tab === 'Project') setTargetValue(10);
+    else if (tab === 'Mingguan') setTargetValue(3);
+    else if (tab === 'Bulanan') setTargetValue(10);
     else setTargetValue(1);
   };
 
-  const currentLevelProgress = userStats.xp % xpPerLevel;
-  const progressPercent = (currentLevelProgress / xpPerLevel) * 100;
-  const displayLevel = Math.floor(userStats.xp / xpPerLevel) + 1;
+  const levelInfo = calculateLevelInfo(userStats.xp);
+  const displayLevel = levelInfo.level;
+  const currentLevelProgress = levelInfo.currentLevelProgress;
+  const progressPercent = levelInfo.progressPercent;
+  const xpPerLevel = levelInfo.xpForNextLevel;
 
   return (
-    <main className="min-h-screen bg-slate-50 pb-24 lg:pb-0 lg:pl-64 font-sans text-slate-900">
+    <main className="min-h-screen bg-[#F8FAFC] pb-24 lg:pb-0 lg:pl-64 font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
       {showLevelUp && <LevelUpModal newLevel={newLevelReached} onClose={() => setShowLevelUp(false)} />}
 
       {/* MODAL SETOR BUKTI */}
       {showProgressModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white p-8 rounded-[2rem] w-full max-w-md shadow-2xl">
-            <h3 className="font-black text-xl mb-4 flex items-center gap-2">📝 SETOR LAPORAN</h3>
-            <p className="text-sm text-slate-500 mb-4">Tulis apa yang Bos kerjakan hari ini.</p>
+        <div className="fixed inset-0 bg-slate-900/30 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-xl border border-slate-100">
+            <div className="flex items-center gap-3 mb-2">
+                <div className="bg-blue-100 p-2 rounded-lg text-blue-600"><BookOpen size={20}/></div>
+                <h3 className="font-bold text-lg text-slate-800">Setor Catatan Progres</h3>
+            </div>
+            <p className="text-sm text-slate-500 mb-5 ml-11">Tulis progres pengerjaan misi lu hari ini.</p>
             <textarea 
               value={progressNote}
               onChange={(e) => setProgressNote(e.target.value)}
-              className="w-full p-4 bg-slate-50 rounded-2xl border-2 border-slate-200 focus:border-blue-500 focus:outline-none font-bold text-slate-700 min-h-[100px]"
-              placeholder="Contoh: Selesai bab 1..."
+              className="w-full p-4 bg-slate-50 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-100/50 focus:outline-none font-medium text-slate-700 min-h-[120px] resize-none transition-all"
+              placeholder="Contoh: Menyelesaikan bagian frontend..."
             />
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowProgressModal(false)} className="flex-1 py-3 font-bold text-slate-400 hover:text-slate-600">BATAL</button>
-              <button onClick={submitProgress} disabled={!progressNote} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 disabled:opacity-50">KIRIM</button>
+              <button onClick={() => setShowProgressModal(false)} className="flex-1 py-3 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors">Batal</button>
+              <button onClick={submitProgress} disabled={!progressNote} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-all shadow-sm">Simpan Progres</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* HEADER */}
-      <section className="bg-white p-6 lg:p-10 border-b border-slate-100 relative">
-        <button onClick={handleReset} className="absolute top-6 right-6 lg:top-10 lg:right-10 flex items-center gap-2 px-4 py-2 bg-red-50 text-red-500 rounded-full text-[10px] font-black uppercase hover:bg-red-500 hover:text-white transition-all z-10">
-          <AlertTriangle size={14} /> Reset
-        </button>
-
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-4">
-             <Link href="/profile" className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-blue-200 hover:scale-105 hover:rotate-3 transition-all cursor-pointer">
-                {userStats.avatar}
-             </Link>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="font-black text-xl tracking-tight uppercase">{userStats.name}</h1>
-                <div className="flex items-center gap-1 bg-orange-50 px-2 py-1 rounded-full border border-orange-100">
-                   <Flame size={12} className="text-orange-500 fill-orange-500 animate-pulse" />
-                   <span className="text-[10px] text-orange-600 font-black">{userStats.streak} DAY STREAK</span>
-                </div>
-              </div>
-              <p className="text-blue-600 text-xs font-bold uppercase tracking-tighter">LVL {displayLevel} • {userStats.xp} XP TOTAL</p>
-            </div>
-          </div>
-          <div className="hidden md:block w-64">
-            <div className="flex justify-between text-[10px] font-black mb-1 uppercase text-slate-400 tracking-widest">
-              <span>Next Level</span>
-              <span>{currentLevelProgress} / {xpPerLevel} XP</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden shadow-inner mt-1">
-              <div className="h-full bg-blue-600 transition-all duration-1000 ease-out" style={{ width: `${progressPercent}%` }} />
-            </div>
-          </div>
-        </div>
-
-        <div className="max-w-5xl mx-auto mt-8 flex gap-4">
-           <Link href="/stats" className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-900 transition-all text-sm w-full md:w-auto justify-center group">
-              <BarChart3 size={18} className="group-hover:text-purple-600" /> 
-              Lihat Statistik & Grafik
-           </Link>
-        </div>
-      </section>
-
-      {/* CONTENT */}
-      <div className="p-6 lg:p-10 max-w-7xl mx-auto grid grid-cols-1 xl:grid-cols-12 gap-8">
+      <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-6">
         
-        {/* INPUT */}
-        <div className="xl:col-span-5">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-            <h2 className="font-black text-xl mb-8 flex items-center gap-2 text-slate-800 italic">ADD NEW MISSION</h2>
-            <div className="space-y-6">
-              <div>
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Aktivitas</label>
-                <input type="text" value={habitName} onChange={(e) => setHabitName(e.target.value)} placeholder="Contoh: Skripsi Bab 1" className="w-full mt-2 p-4 bg-slate-50 border-2 border-transparent focus:border-blue-100 focus:bg-white rounded-2xl focus:outline-none transition-all font-bold"/>
+        {/* HEADER */}
+        <div className="flex justify-between items-center mt-2 pt-4">
+          <div className="flex items-center gap-4">
+            <Link href="/profile" className="relative">
+                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center text-2xl shadow-sm border border-slate-200 cursor-pointer hover:border-blue-300 transition-all">
+                    {userStats.avatar}
+                </div>
+                <div className="absolute -bottom-1 -right-1 bg-green-500 w-4 h-4 rounded-full border-2 border-white"></div>
+            </Link>
+            <div>
+              <h1 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">Hi, {userStats.name} <span className="text-2xl">👋</span></h1>
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-500 mt-1">
+                <div className="flex items-center gap-1 bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg border border-orange-100">
+                    <Flame size={12} className="fill-current"/> <span className="font-bold">{userStats.streak}</span>
+                </div>
+                <span>Day Streak</span>
               </div>
+            </div>
+          </div>
+          <div className="bg-white pl-3 pr-4 py-2 rounded-xl border border-slate-200 shadow-sm flex items-center gap-2 cursor-pointer hover:border-blue-300 group transition-all" onClick={handleReset}>
+            <div className="bg-blue-100 text-blue-600 p-1.5 rounded-lg group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <Award size={16} />
+            </div>
+            <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Level</p>
+                <p className="text-lg font-black text-slate-800 leading-none">{displayLevel}</p>
+            </div>
+          </div>
+        </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipe</label>
-                  <select value={activeTab} onChange={(e) => handleTabChange(e.target.value)} className="w-full mt-2 p-4 bg-slate-50 rounded-2xl font-bold focus:outline-none appearance-none border-2 border-transparent focus:border-blue-100">
-                    {Object.keys(habitConfigs).map(k => <option key={k} value={k}>{k}</option>)}
-                  </select>
+        {/* XP CARD */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white shadow-xl shadow-blue-200/40 relative overflow-hidden border border-blue-500/50">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+          <div className="absolute bottom-0 left-0 w-40 h-40 bg-indigo-500/20 rounded-full blur-2xl -ml-10 -mb-10 pointer-events-none"></div>
+          
+          <div className="relative z-10">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-blue-100 font-medium flex items-center gap-2 mb-2">
+                  <LayoutDashboard size={16}/> Total XP Balance
+                </p>
+                <h1 className="text-5xl font-black tracking-tighter flex items-baseline gap-2">
+                  {userStats.xp.toLocaleString('id-ID')} <span className="text-lg font-bold text-blue-200">XP</span>
+                </h1>
+              </div>
+            </div>
+
+            <div className="mt-8 bg-black/20 rounded-xl p-4 backdrop-blur-md border border-white/10">
+              <div className="flex justify-between text-xs font-bold text-blue-100 mb-2 uppercase tracking-wider">
+                <span>Progress to Lvl {displayLevel + 1}</span>
+                <span>{currentLevelProgress} / {xpPerLevel} XP</span>
+              </div>
+              <div className="h-3 bg-black/30 rounded-md overflow-hidden shadow-inner">
+                <div className="h-full bg-gradient-to-r from-blue-200 to-white rounded-md transition-all duration-1000 ease-out relative" style={{ width: `${progressPercent}%` }}>
+                  <div className="absolute right-0 top-0 h-full w-1 bg-white animate-pulse"></div>
                 </div>
-                <div>
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">XP Reward</label>
-                  <input type="number" min={currentConfig.min} max={currentConfig.max} value={selectedExp} onChange={(e) => setSelectedExp(parseInt(e.target.value) || 0)} className="w-full mt-2 p-4 bg-blue-50 text-blue-600 rounded-2xl font-black focus:outline-none border-2 border-transparent focus:border-blue-200"/>
-                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TABS */}
+        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {Object.keys(habitConfigs).map((tab) => (
+            <button 
+              key={tab}
+              onClick={() => handleTabChange(tab)}
+              className={cn(
+                "flex-1 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ease-in-out",
+                activeTab === tab ? "bg-white text-blue-600 shadow-sm border border-slate-100" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200/50"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
+
+        {/* FORM INPUT MISI */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200/60">
+          <h3 className="font-bold text-slate-800 mb-5 flex items-center gap-2"><Target className="text-blue-500"/> Quick Record</h3>
+          
+          <div className="space-y-4">
+            <div className="relative">
+              <input 
+                type="text" 
+                value={habitName} 
+                onChange={(e) => setHabitName(e.target.value)} 
+                placeholder="Nama rutinitas atau tugas..." 
+                className="w-full p-4 pl-12 bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl focus:outline-none transition-all font-bold text-slate-700 placeholder:text-slate-400/80"
+              />
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                {activeTab === 'Project' ? <BookOpen size={20}/> : <Zap size={20}/>}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <input 
+                  type="number" 
+                  min={currentConfig.min} max={currentConfig.max} 
+                  value={selectedExp} 
+                  onChange={(e) => setSelectedExp(parseInt(e.target.value) || 0)} 
+                  className="w-full p-4 pl-12 bg-blue-50/50 text-blue-700 rounded-xl font-bold border border-blue-100 focus:outline-none focus:border-blue-300 focus:bg-blue-50 transition-all"
+                />
+                <Star size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-500 fill-blue-500" />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-blue-400">XP</span>
               </div>
               
-              {activeTab === 'Project' && (
-                <div className="animate-in fade-in slide-in-from-top-2">
-                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
-                      <Target size={12} /> Target Penyelesaian
-                   </label>
-                   <div className="flex items-center gap-4 mt-2">
-                      <input 
-                        type="number" 
-                        min={2} 
-                        value={targetValue} 
-                        onChange={(e) => setTargetValue(parseInt(e.target.value) || 2)} 
-                        className="w-full p-4 bg-red-50 text-red-600 rounded-2xl font-black focus:outline-none border-2 border-transparent focus:border-red-200"
-                      />
-                      <span className="font-bold text-slate-400 text-sm">Sesi/Hari</span>
-                   </div>
+              {activeTab !== 'Harian' && (
+                <div className="flex-1 relative animate-in fade-in">
+                  <input 
+                    type="number" min={2} 
+                    value={targetValue} 
+                    onChange={(e) => setTargetValue(parseInt(e.target.value) || 2)} 
+                    className="w-full p-4 pr-12 bg-slate-50 text-slate-700 rounded-xl font-bold border border-slate-200 focus:outline-none focus:border-blue-300"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Target</span>
                 </div>
               )}
-
-              <button onClick={handleAddHabit} disabled={isLoading} className={cn("w-full p-5 rounded-2xl font-black transition-all shadow-lg active:scale-95", isLoading ? "bg-slate-300" : "bg-slate-900 text-white hover:bg-blue-600")}>
-                {isLoading ? "SAVING..." : "CONFIRM MISSION"}
+              
+              <button 
+                onClick={handleAddHabit} 
+                disabled={isLoading || !habitName} 
+                className="w-14 shrink-0 bg-blue-600 text-white rounded-xl flex items-center justify-center shadow-md shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+              >
+                <Plus size={24} strokeWidth={3} />
               </button>
             </div>
+
+            {activeTab === 'Project' && (
+              <div className="relative animate-in fade-in slide-in-from-top-2">
+                 <input 
+                   type="date" 
+                   value={deadline} 
+                   onChange={(e) => setDeadline(e.target.value)} 
+                   className="w-full p-4 pr-32 bg-orange-50/50 text-orange-700 rounded-xl font-bold border border-orange-100 focus:outline-none focus:border-orange-300 transition-all"
+                 />
+                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-orange-400 uppercase tracking-wider pl-2 bg-orange-50/50">Tenggat Waktu</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* LIST */}
-        <div className="xl:col-span-7">
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 min-h-[500px]">
-            <div className="flex justify-between items-center mb-8">
-              <h2 className="font-black text-xl flex items-center gap-3"><Zap className="text-yellow-400 fill-yellow-400" size={24} /> ACTIVE MISSIONS</h2>
-              <button onClick={() => refreshData()} className="p-2 text-slate-300 hover:text-blue-600"><RotateCcw size={20}/></button>
-            </div>
-            
-            <div className="space-y-4">
-              {habits.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 opacity-20"><Award size={64} /><p className="font-black italic mt-4">NO ACTIVE MISSIONS</p></div>
-              ) : (
-                habits.map((h) => (
-                  <div key={h.id} className="flex flex-col p-6 bg-slate-50 rounded-[1.5rem] border-2 border-transparent hover:border-blue-100 hover:bg-white transition-all group">
-                    <div className="flex items-start justify-between w-full">
-                       <div className="flex items-start gap-4">
-                          {h.targetValue > 1 ? (
-                            <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center text-red-500"><BookOpen size={24} /></div>
-                          ) : (
-                            <button onClick={() => handleComplete(h.id, h.expReward)} className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-300 hover:text-white hover:bg-green-500 border-2 border-slate-100 hover:border-green-500 transition-all"><CheckCircle2 size={28} /></button>
+        {/* LIST MISI */}
+        <div className="pt-2">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+              Target Hari Ini <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-md">{habits.length}</span>
+            </h3>
+          </div>
+
+          <div className="space-y-3">
+            {habits.length === 0 ? (
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-center">
+                <div className="bg-white p-4 rounded-2xl shadow-sm mb-4">
+                  <CheckCircle2 size={40} className="text-slate-300" />
+                </div>
+                <p className="text-slate-500 font-bold text-lg">Semua misi sudah beres!</p>
+                <p className="text-slate-400 text-sm mt-1">Istirahat dulu atau tambah misi baru?</p>
+              </div>
+            ) : (
+              habits.map((h) => (
+                <div key={h.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 group transition-all hover:border-blue-200 hover:shadow-md">
+                  
+                  {/* DETAIL MISI & TOMBOL ACTION */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-4">
+                      <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border", h.targetValue > 1 ? "bg-slate-50 border-slate-100 text-slate-600" : "bg-blue-50/50 border-blue-100 text-blue-600")}>
+                        {h.targetValue > 1 ? <BookOpen size={22} /> : <Target size={22} />}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0 pt-0.5">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h4 className="font-bold text-slate-800 text-base leading-tight">{h.name}</h4>
+                          <span className={cn("text-[9px] font-black uppercase px-2 py-0.5 rounded border", getBadgeStyles(h.category))}>
+                            {h.category}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                          <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                            <Zap size={12} className="fill-current"/> +{h.expReward} XP
+                          </span>
+                          
+                          {h.deadline && (
+                            <span className="text-[10px] font-bold text-orange-500 flex items-center gap-1 uppercase">
+                                ⏳ {new Date(h.deadline).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
                           )}
-                          <div>
-                             <p className="font-black text-slate-800 text-lg leading-tight uppercase tracking-tight">{h.name}</p>
-                             <p className={cn("text-[10px] font-black uppercase mt-1", habitConfigs[h.category]?.color || "text-blue-600")}>{h.category} • +{h.expReward} XP REWARD</p>
-                          </div>
-                       </div>
-                       <button onClick={() => handleDelete(h.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18} /></button>
+                        </div>
+                      </div>
                     </div>
-                    {h.targetValue > 1 && (
-                       <div className="mt-4 bg-white p-4 rounded-2xl border border-slate-100">
-                          <div className="flex justify-between items-end mb-2">
-                             <span className="text-xs font-bold text-slate-400 uppercase">Progress Laporan</span>
-                             <span className="text-sm font-black text-red-500">{h.currentValue} / {h.targetValue} SESI</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                             <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-red-500 transition-all duration-500" style={{ width: `${(h.currentValue / h.targetValue) * 100}%` }} />
-                             </div>
-                             <button onClick={() => openProgressModal(h.id)} className="w-8 h-8 flex items-center justify-center bg-slate-900 text-white rounded-lg hover:bg-blue-600 transition-all shadow-lg active:scale-90"><Plus size={16} /></button>
-                          </div>
-                       </div>
-                    )}
+
+                    <div className="flex items-start gap-2">
+                      {/* TOMBOL CENTANG HANYA JIKA TARGET <= 1 */}
+                      {h.targetValue <= 1 && (
+                        <button 
+                          onClick={() => handleComplete(h.id, h.expReward)} 
+                          className="w-11 h-11 rounded-xl border-2 border-slate-100 bg-slate-50 flex items-center justify-center text-slate-300 hover:border-emerald-500 hover:bg-emerald-50 hover:text-emerald-600 transition-all active:scale-90 shadow-sm"
+                        >
+                          <CheckCircle2 size={24} strokeWidth={2.5} />
+                        </button>
+                      )}
+                      
+                      <button 
+                        onClick={() => handleDelete(h.id)} 
+                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
-                ))
-              )}
-            </div>
+
+                  {/* AREA PROGRESS KHUSUS TARGET > 1 */}
+                  {h.targetValue > 1 && (
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-4">
+                      <div className="flex-1">
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">
+                          <span>Progres {h.category}</span>
+                          <span className="text-slate-800 font-black">{h.currentValue} / {h.targetValue}</span>
+                        </div>
+                        <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div 
+                            className={cn(
+                              "h-full transition-all duration-500 rounded-full relative",
+                              h.category.toUpperCase() === "PROJECT" ? "bg-slate-900" : "bg-blue-600"
+                            )} 
+                            style={{ width: `${Math.min((h.currentValue / h.targetValue) * 100, 100)}%` }}
+                          >
+                            <div className="absolute right-0 top-0 h-full w-1 bg-white/30 animate-pulse"></div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={() => openProgressModal(h.id)} 
+                        className="text-[11px] font-black text-white bg-blue-600 px-4 py-2.5 rounded-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-blue-100 uppercase"
+                      >
+                        <Plus size={14} strokeWidth={3}/> Setor
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+              ))
+            )}
           </div>
         </div>
+
       </div>
       <Navbar />
     </main>
