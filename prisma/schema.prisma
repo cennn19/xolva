@@ -1,7 +1,8 @@
 // === KONFIGURASI GENERATOR & DATABASE ===
 datasource db {
-  provider = "postgresql"  // <--- UBAH INI
-  url      = env("DATABASE_URL") // <--- DAN INI
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // INI HARUS ADA
 }
 
 generator client {
