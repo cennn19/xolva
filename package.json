@@ -2,11 +2,12 @@
   "name": "xolva-app",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev -p 2007",
-    "build": "next build",
-    "start": "next start -p 2007",
-    "lint": "eslint"
+ "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && prisma db push && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
