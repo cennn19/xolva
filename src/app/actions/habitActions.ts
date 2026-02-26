@@ -10,22 +10,50 @@ export async function createHabit(data: { name: string; category: string; expRew
     const user = await getAuthUser();
     if (!user) return { success: false, message: "Belum Login" };
 
+    // === 🛡️ LOGIKA ANTI-CHEAT MULAI DI SINI ===
+    
+    // 1. Validasi Nama: Cegah misi kosong spasi doang
+    if (!data.name || data.name.trim() === '') {
+      return { success: false, message: "Nama misi tidak valid" };
+    }
+
+    // 2. Siapkan batas wajar sesuai aturan game Xolva
+    let minExp = 0;
+    let maxExp = 0;
+    const categoryUpper = data.category.toUpperCase();
+
+    if (categoryUpper === 'HARIAN') { minExp = 3; maxExp = 6; }
+    else if (categoryUpper === 'MINGGUAN') { minExp = 15; maxExp = 25; }
+    else if (categoryUpper === 'BULANAN') { minExp = 40; maxExp = 60; }
+    else if (categoryUpper === 'PROJECT') { minExp = 300; maxExp = 600; }
+    else {
+      return { success: false, message: "Kategori curang/tidak dikenali" };
+    }
+
+    // 3. CLAMPING: Paksa nilai expReward agar tidak tembus batas
+    // Misal: dia suntik 9999 di Harian, Math.min(9999, 6) = 6. 
+    // Jadi dia cuma dapet 6 XP walau nyoba curang.
+    const safeExpReward = Math.min(Math.max(data.expReward, minExp), maxExp);
+
+    // === 🛡️ LOGIKA ANTI-CHEAT SELESAI ===
+
     await prisma.habit.create({
       data: {
-        name: data.name,
-        category: data.category,
-        expReward: data.expReward,
+        name: data.name.trim(), // Buang spasi berlebih
+        category: categoryUpper, // Pastikan selalu UPPERCASE di database
+        expReward: safeExpReward, // 👈 Pake angka yang udah aman
         userId: user.id,
-        targetValue: data.targetValue || 1,
+        targetValue: data.targetValue && data.targetValue > 0 ? data.targetValue : 1, // Cegah target negatif/0
         currentValue: 0,
         lastCompleted: null,
-        deadline: data.deadline || null // 👈 Simpen ke database
+        deadline: data.deadline || null
       }
     });
 
     revalidatePath("/");
     return { success: true };
   } catch (error) {
+    console.error("Gagal membuat misi:", error);
     return { success: false };
   }
 }
@@ -41,8 +69,7 @@ export async function deleteHabit(habitId: string) {
   }
 }
 
-// 3. AMBIL DATA
-// 3. AMBIL DATA (Udah Pinter Bedain Harian, Mingguan, Bulanan)
+// 3. AMBIL DATA & RESET (OPTIMASI N+1 QUERY)
 export async function getHabits() {
   try {
     const user = await getAuthUser();
@@ -55,67 +82,61 @@ export async function getHabits() {
     });
 
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Jam 00:00 hari ini
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
-    // Cari hari Senin minggu ini
     const startOfWeek = new Date(today);
     const day = startOfWeek.getDay();
     const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
     startOfWeek.setDate(diff);
     
-    // Cari tanggal 1 bulan ini
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Filter & Reset logic
-    const filteredHabits = await Promise.all(allHabits.map(async (habit) => {
-      // 1. PROJECT: Cuma hilang kalau target udah penuh (Gak pernah reset)
+    const idsToReset: string[] = []; // 👈 Tampung ID yang mau di-reset
+    const finalData: any[] = [];
+
+    allHabits.forEach((habit) => {
       if (habit.category === "Project" || habit.category === "PROJECT") {
-          return habit.currentValue >= habit.targetValue ? null : habit;
+        if (habit.currentValue < habit.targetValue) finalData.push(habit);
+        return;
       }
 
-      // Ambil tanggal terakhir misi ini di-update / diselesaikan
-      // (Bisa pakai lastCompleted, tapi buat amannya pakai kapan terakhir dimodifikasi)
       let lastUpdate = habit.lastCompleted ? new Date(habit.lastCompleted) : null;
       if (lastUpdate) lastUpdate.setHours(0, 0, 0, 0);
 
       let needsReset = false;
 
-      // 2. TENTUKAN APAKAH MISI INI KEDALUWARSA & BUTUH DI-RESET PROGRESSNYA
       if (lastUpdate) {
-          if (habit.category === "HARIAN" || habit.category === "Harian") {
-              if (lastUpdate.getTime() < today.getTime()) needsReset = true;
-          } else if (habit.category === "MINGGUAN" || habit.category === "Mingguan") {
-              if (lastUpdate.getTime() < startOfWeek.getTime()) needsReset = true;
-          } else if (habit.category === "BULANAN" || habit.category === "Bulanan") {
-              if (lastUpdate.getTime() < startOfMonth.getTime()) needsReset = true;
-          }
+        if (habit.category.toUpperCase() === "HARIAN" && lastUpdate.getTime() < today.getTime()) needsReset = true;
+        else if (habit.category.toUpperCase() === "MINGGUAN" && lastUpdate.getTime() < startOfWeek.getTime()) needsReset = true;
+        else if (habit.category.toUpperCase() === "BULANAN" && lastUpdate.getTime() < startOfMonth.getTime()) needsReset = true;
       }
 
-      // 3. EKSEKUSI RESET (Biar besok/minggu depan balik ke 0/3)
       if (needsReset) {
-          await prisma.habit.update({
-             where: { id: habit.id },
-             data: { currentValue: 0, lastCompleted: null }
-          });
-          habit.currentValue = 0;
-          habit.lastCompleted = null;
+        idsToReset.push(habit.id); // 👈 Kumpulkan ID-nya saja
+        habit.currentValue = 0;
+        habit.lastCompleted = null;
       }
 
-      // 4. SEMBUNYIKAN KALAU UDAH BERES DI PERIODE INI
-      if (habit.currentValue >= habit.targetValue) return null;
+      if (habit.currentValue < habit.targetValue) {
+        finalData.push(habit);
+      }
+    });
 
-      // Munculin di layar karena belum beres
-      return habit;
-    }));
-
-    // Bersihin array dari yang nilainya 'null' (yang disembunyiin)
-    const finalData = filteredHabits.filter(h => h !== null);
+    // 👈 EKSEKUSI DATABASE SEKALI JALAN (Lebih cepat & ringan buat Vercel)
+    if (idsToReset.length > 0) {
+      await prisma.habit.updateMany({
+        where: { id: { in: idsToReset } },
+        data: { currentValue: 0, lastCompleted: null }
+      });
+    }
 
     return { success: true, data: finalData, user: user };
   } catch (error) {
+    console.error("Error getHabits:", error);
     return { success: false, data: [], user: null };
   }
 }
+
 // 4. SELESAIKAN MISI (Udah Fix: Gak Dihapus, Cuma Di-Update)
 // === PERBAIKAN DI habitActions.ts ===
 
@@ -187,7 +208,7 @@ export async function updateProfile(name: string, avatar: string) {
 }
 
 // 6. NAMBAH PROGRESS PROJECT
-export async function addProgress(habitId: string, note: string) {
+export async function addProgress(habitId: string, note?: string) {
   try {
     const habit = await prisma.habit.findUnique({ where: { id: habitId } });
     if (!habit) return { success: false };
@@ -195,15 +216,21 @@ export async function addProgress(habitId: string, note: string) {
     // Cegah nambah kalau udah mentok
     if (habit.currentValue >= habit.targetValue) return { success: false };
 
+    // Siapkan data update. Kalau ada note (buat Project), sekalian bikin log.
+    const updateData: any = {
+      currentValue: { increment: 1 }
+    };
+
+    if (note && note.trim() !== "") {
+      updateData.logs = { create: { note } };
+    }
+
     const updated = await prisma.habit.update({
       where: { id: habitId },
-      data: { 
-        currentValue: { increment: 1 }, 
-        logs: { create: { note } } 
-      }
+      data: updateData
     });
 
-    // Jika target tercapai, panggil completeHabit buat cairin XP & masuk History
+    // Jika target tercapai, panggil completeHabit buat cairin XP
     if (updated.currentValue >= updated.targetValue) {
       const res = await completeHabit(habitId);
       return { success: true, status: 'completed', earnedXp: res?.earnedXp };
